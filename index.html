@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dance Score Game</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
+
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: Arial;
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 10px;
+    }
+
+    .container {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    #webcam-container canvas {
+      border: 3px solid white;
+      border-radius: 10px;
+    }
+
+    iframe {
+      border-radius: 10px;
+    }
+
+    .score {
+      font-size: 30px;
+      margin-top: 20px;
+      color: #00ff88;
+    }
+
+    .currentMove {
+      font-size: 24px;
+      margin-top: 10px;
+      color: yellow;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>행동 따라하기 게임</h1>
+
+  <div class="score">
+    점수 : <span id="score">0</span>
+  </div>
+
+  <div class="currentMove">
+    현재 행동 : <span id="targetMove">REST</span>
+  </div>
+
+  <div class="container">
+
+    <!-- 유튜브 영상 -->
+    <div>
+      <iframe
+        id="youtubePlayer"
+        width="640"
+        height="360"
+        src="https://www.youtube.com/embed/oRr5hxr_bRA?enablejsapi=1"
+        title="YouTube video player"
+        frameborder="0"
+        allow="autoplay"
+        allowfullscreen>
+      </iframe>
+    </div>
+
+    <!-- 웹캠 -->
+    <div id="webcam-container"></div>
+
+  </div>
+
+  <script>
+
+    // =========================
+    // 티처블 머신 모델 주소
+    // =========================
+    const URL = "여기에_티처블머신_모델링크/";
+
+    let model, webcam, maxPredictions;
+    let score = 0;
+
+    // 중복 점수 방지
+    let lastScoredMove = "";
+
+    // 시간별 정답 행동
+    // 영상 시간(초)에 맞게 수정하면 됨
+    const timeline = [
+      { time: 0, action: "REST" },
+      { time: 5, action: "SAY HI" },
+      { time: 10, action: "WALK" },
+      { time: 15, action: "SWING" },
+      { time: 20, action: "PAW" },
+      { time: 25, action: "JUMP" },
+    ];
+
+    // 현재 요구 행동
+    let currentTarget = "REST";
+
+    async function init() {
+
+      const modelURL = URL + "model.json";
+      const metadataURL = URL + "metadata.json";
+
+      model = await tmImage.load(modelURL, metadataURL);
+      maxPredictions = model.getTotalClasses();
+
+      // 웹캠 설정
+      webcam = new tmImage.Webcam(300, 300, true);
+      await webcam.setup();
+      await webcam.play();
+
+      window.requestAnimationFrame(loop);
+
+      document.getElementById("webcam-container")
+        .appendChild(webcam.canvas);
+
+      // 1초마다 현재 영상 시간 확인
+      setInterval(updateTargetAction, 500);
+    }
+
+    async function loop() {
+      webcam.update();
+      await predict();
+      window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+
+      const prediction = await model.predict(webcam.canvas);
+
+      let bestClass = "";
+      let bestProb = 0;
+
+      for (let i = 0; i < prediction.length; i++) {
+
+        if (prediction[i].probability > bestProb) {
+          bestProb = prediction[i].probability;
+          bestClass = prediction[i].className;
+        }
+      }
+
+      // 정확도 기준
+      if (
+        bestClass === currentTarget &&
+        bestProb > 0.90 &&
+        lastScoredMove !== currentTarget
+      ) {
+
+        score += 10;
+
+        document.getElementById("score").innerText = score;
+
+        lastScoredMove = currentTarget;
+
+        // 다음 행동에서 다시 점수 가능
+        setTimeout(() => {
+          lastScoredMove = "";
+        }, 2000);
+      }
+    }
+
+    // 영상 시간 기준 행동 변경
+    function updateTargetAction() {
+
+      const iframe = document.getElementById("youtubePlayer");
+
+      // 유튜브 플레이어 시간 가져오기 불가능하므로
+      // 시작 시간 기준으로 계산
+
+      if (!window.startTime) {
+        window.startTime = Date.now();
+      }
+
+      const elapsed = (Date.now() - window.startTime) / 1000;
+
+      for (let i = timeline.length - 1; i >= 0; i--) {
+
+        if (elapsed >= timeline[i].time) {
+          currentTarget = timeline[i].action;
+          break;
+        }
+      }
+
+      document.getElementById("targetMove").innerText = currentTarget;
+    }
+
+    init();
+
+  </script>
+
+</body>
+</html>
